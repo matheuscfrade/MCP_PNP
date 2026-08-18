@@ -44,8 +44,10 @@ TABLES = {
     "inscritos_vagas": f"CREATE TABLE IF NOT EXISTS inscritos_vagas ({DIM}, n_inscritos REAL, n_vagas REAL, relacao_inscrito_vaga REAL)",
     "reserva_vagas": f"CREATE TABLE IF NOT EXISTS reserva_vagas ({DIM}, tipo_reserva TEXT, vagas_regulares REAL, vagas_regulares_pct REAL)",
     "gastos": f"CREATE TABLE IF NOT EXISTS gastos ({DIM}, gasto_por_mateq REAL, gastos_totais REAL, gastos_correntes REAL, gastos_pessoal REAL, gastos_custeio REAL, gastos_investimento REAL, gastos_inativos REAL, gastos_precatorios REAL)",
-    "docentes": f"CREATE TABLE IF NOT EXISTS docentes ({DIM}, n_docentes REAL, n_docentes_efetivos REAL, n_servidores REAL, itcd REAL, titulacao TEXT)",
+    "docentes": f"CREATE TABLE IF NOT EXISTS docentes ({DIM}, n_docentes REAL, n_docentes_efetivos REAL, n_servidores REAL, itcd REAL, titulacao TEXT, jornada TEXT)",
+    "docentes_jornada": f"CREATE TABLE IF NOT EXISTS docentes_jornada ({DIM}, n_docentes REAL, titulacao TEXT, jornada TEXT)",
     "tae": f"CREATE TABLE IF NOT EXISTS tae ({DIM}, n_tae REAL, titulacao TEXT)",
+    "cargos": f"CREATE TABLE IF NOT EXISTS cargos ({DIM}, carreira_sigla TEXT, n_servidores REAL)",
     "orcamento": f"CREATE TABLE IF NOT EXISTS orcamento ({DIM}, dotacao_atualizada REAL, despesa_empenhada REAL, despesa_liquidada REAL, despesa_paga REAL, empenhado_a_liquidar REAL, credito_disponivel REAL, resultado_primario TEXT, relacao_orgao TEXT)",
     "perfil_discente": f"CREATE TABLE IF NOT EXISTS perfil_discente ({DIM}, cor_raca TEXT, renda_familiar TEXT, sexo TEXT, faixa_etaria TEXT, n_matriculas REAL, n_concluintes REAL, n_ingressantes REAL, n_vagas REAL)",
 }
