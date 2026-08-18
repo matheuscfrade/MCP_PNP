@@ -1,0 +1,18 @@
+EXTRATOR_CONJUNTOS = (
+    {"id": 1, "tabela": "orcamento"},
+    {"id": 3, "tabela": "oferta"},
+    {"id": 4, "tabela": "situacao_matricula"},
+    {"id": 5, "tabela": "perfil_discente"},
+    {"id": 6, "tabela": "percentuais_legais"},
+    {"id": 7, "tabela": "reserva_vagas"},
+    {"id": 8, "tabela": "vagas_noturnas"},
+    {"id": 9, "tabela": "inscritos_vagas"},
+    {"id": 10, "tabela": "evasao"},
+    {"id": 11, "tabela": "eficiencia"},
+    {"id": 12, "tabela": "rap"},
+    {"id": 13, "tabela": "verticalizacao"},
+    {"id": 14, "tabela": "ocupacao"},
+    {"id": 15, "tabela": "docentes"},
+    {"id": 16, "tabela": "tae"},
+    {"id": 18, "tabela": "gastos"},
+)
