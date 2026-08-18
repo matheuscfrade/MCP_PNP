@@ -164,7 +164,7 @@ def pnp_listar_unidades(instituicao: str) -> dict[str, Any]:
             (instituicao,),
         )
         if not registros:
-            return PnpError("unidade_desconhecida", instituicao).as_dict()
+            return PnpError("instituicao_desconhecida", instituicao).as_dict()
         return ok(
             fonte="oficial",
             edicao_pnp=None,

@@ -61,3 +61,11 @@ def test_comparar_fonte_derivada(db_path):
     assert rec["valores"]["esquerda"] == 80.5
     assert rec["valores"]["direita"] == 40.0
     assert rec["diferenca"] == 40.5
+
+
+def test_listar_unidades_instituicao_desconhecida(db_path, monkeypatch):
+    from mcp_pnp.tools import pnp_listar_unidades
+
+    monkeypatch.setenv("PNP_DB_PATH", str(db_path))
+    body = pnp_listar_unidades(instituicao="XXXX")
+    assert body["codigo"] == "instituicao_desconhecida"
