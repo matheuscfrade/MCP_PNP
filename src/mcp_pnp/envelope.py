@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from mcp_pnp.errors import PnpError
-
 ok_fonte = {"oficial", "derivada"}
 
 

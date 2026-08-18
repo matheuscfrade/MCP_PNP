@@ -1,5 +1,6 @@
 import pytest
-from mcp_pnp.envelope import ok, PnpError
+from mcp_pnp.envelope import ok
+from mcp_pnp.errors import PnpError
 
 
 def test_ok_oficial():
