@@ -5,10 +5,13 @@ from pathlib import Path
 from typing import Any
 
 from mcp_pnp.config import Settings
+from mcp_pnp.db.schema import TABLES
 from mcp_pnp.envelope import ok
 from mcp_pnp.errors import PnpError
 from mcp_pnp.registry import Indicador
 
+# Table/column identifiers come only from the static registry / DIM_FILTERS;
+# filter values are bound parameters.
 DIM_FILTERS = {
     "instituicao": "instituicao_sigla",
     "unidade": "unidade",
@@ -48,10 +51,17 @@ def consultar(
     settings: Settings | None = None,
 ) -> dict[str, Any]:
     settings = settings or Settings.from_env()
-    limite = int(filtros.get("limite") or settings.max_registros)
-    offset = int(filtros.get("offset") or 0)
+    raw_limite = filtros["limite"] if "limite" in filtros and filtros["limite"] is not None else settings.max_registros
+    try:
+        limite = int(raw_limite)
+    except (TypeError, ValueError) as exc:
+        raise PnpError("limite_invalido") from exc
     if limite < 1 or limite > 500:
         raise PnpError("limite_invalido")
+    offset = int(filtros.get("offset") or 0)
+
+    if indicador.tabela not in TABLES:
+        raise ValueError(f"tabela não permitida: {indicador.tabela}")
 
     conn = _connect(db_path)
     try:
@@ -60,6 +70,10 @@ def consultar(
         if applied.get("ano") is None:
             applied["ano"] = ultimo_ano(conn)
             aviso = f"Ano omitido; usando o último ano carregado ({applied['ano']})."
+        elif conn.execute(
+            "SELECT 1 FROM edicoes WHERE ano = ?", (applied["ano"],)
+        ).fetchone() is None:
+            raise PnpError("ano_indisponivel")
 
         where = []
         params: list[Any] = []
@@ -82,10 +96,9 @@ def consultar(
             + " LIMIT ? OFFSET ?"
         )
         params.extend([limite + 1, offset])
-        try:
-            rows = conn.execute(sql, params).fetchall()
-        except sqlite3.Error as exc:
-            raise PnpError("sem_registros", str(exc)) from exc
+        rows = conn.execute(sql, params).fetchall()
+        if not rows:
+            raise PnpError("sem_registros")
 
         truncado = len(rows) > limite
         rows = rows[:limite]
