@@ -17,7 +17,13 @@ pip install -e ".[dev]"
 mcp-pnp sync --from-dir <pasta-com-os-CSVs-do-Extrator>
 ```
 
-A pasta `data/` e os CSVs do Extrator **não** vão para o Git. Importe localmente (`mcp-pnp sync --from-dir …`) para gerar `data/pnp.sqlite`. Sem sync, as consultas pedem sincronização.
+A pasta `data/` e os CSVs do Extrator **não** vão no Git (são ~90 MB e mudam a cada edição). Estão na [Release `extrator-2025`](https://github.com/matheuscfrade/MCP_PNP/releases/tag/extrator-2025): zip dos 18 CSVs e o `pnp.sqlite` já importado.
+
+```powershell
+# CSVs
+gh release download extrator-2025 -p extrator-pnp-csvs.zip -R matheuscfrade/MCP_PNP
+# ou use o pnp.sqlite direto e defina PNP_DB_PATH
+```
 
 Indicadores que o Extrator ainda não exporta (ALRAPE, ALVCN, ALGN, ALMGN, ALVTEC, ALVPROF, ALVEJA e outros) estão em `docs/lacunas-extrator.md`.
 
