@@ -3,12 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from mcp_pnp.db.queries import consultar
+from mcp_pnp.db.queries import agregar_oficial, consultar
 from mcp_pnp.envelope import ok
 from mcp_pnp.errors import PnpError
+from mcp_pnp.formulas import formula_de
 from mcp_pnp.registry import Indicador, get
-
-_RAZAO = {"percentual", "indice", "razao", "reais_por_mateq"}
 
 
 def _resolve(indicador: Indicador | str) -> Indicador:
@@ -29,11 +28,10 @@ def _nums(registros: list[dict[str, Any]]) -> list[float]:
 
 
 def _agregar(indicador: Indicador, registros: list[dict[str, Any]]) -> float | None:
+    """Não usar para taxas. Preferir agregar_oficial (SQL, fórmula do Guia)."""
     vals = _nums(registros)
     if not vals:
         return None
-    if indicador.unidade_medida in _RAZAO:
-        return sum(vals) / len(vals)
     return sum(vals)
 
 
@@ -78,8 +76,8 @@ def comparar(
     ind = _resolve(indicador)
     left = consultar(db, ind, _com_limite(esquerda))
     right = consultar(db, ind, _com_limite(direita))
-    v_esq = _agregar(ind, left["registros"])
-    v_dir = _agregar(ind, right["registros"])
+    v_esq = left.get("valor_oficial")
+    v_dir = right.get("valor_oficial")
     dif = None if v_esq is None or v_dir is None else v_esq - v_dir
     if dif is None or v_dir in (None, 0):
         pct: float | None = None
@@ -99,7 +97,10 @@ def comparar(
                 "diferenca_pct": pct,
             }
         ],
-        aviso="Comparação calculada no MCP; não é um indicador oficial.",
+        aviso=(
+            f"Comparação com fórmula oficial ({formula_de(ind.codigo).expressao}). "
+            "Não é um recálculo dos microdados."
+        ),
     )
 
 
@@ -118,7 +119,7 @@ def evolucao(
             body = consultar(db, ind, _com_limite({**filtros, "ano": ano}))
         except PnpError:
             continue
-        valor = _agregar(ind, body["registros"])
+        valor = body.get("valor_oficial")
         if prev is None or prev == 0 or valor is None:
             yoy: float | None = None
         else:
@@ -138,7 +139,10 @@ def evolucao(
             "ano_fim": ano_fim,
         },
         registros=serie,
-        aviso="Série calculada no MCP; anos sem dado foram omitidos.",
+        aviso=(
+            f"Série com fórmula oficial ({formula_de(ind.codigo).expressao}). "
+            "Anos sem dado foram omitidos."
+        ),
     )
 
 
@@ -158,25 +162,13 @@ def ranking(
     if ano is not None:
         filtros["ano"] = ano
     body = consultar(db, ind, filtros)
-    grupos: dict[str, list[float]] = {}
-    for row in body["registros"]:
-        nome = row.get(chave)
-        if not nome:
-            continue
-        val = row.get("valor")
-        if val is None:
-            continue
-        try:
-            grupos.setdefault(str(nome), []).append(float(val))
-        except (TypeError, ValueError):
-            continue
+    oficiais = agregar_oficial(db, ind, {k: v for k, v in filtros.items() if k != "limite"}, group_by=chave)
     itens: list[dict[str, Any]] = []
-    for nome, vals in grupos.items():
-        if ind.unidade_medida in _RAZAO:
-            valor = sum(vals) / len(vals)
-        else:
-            valor = sum(vals)
-        itens.append({nivel: nome, "valor": valor})
+    for rec in oficiais:
+        nome = rec.get(chave)
+        if not nome or rec.get("valor") is None:
+            continue
+        itens.append({nivel: nome, "valor": rec["valor"]})
     reverse = str(ordem).lower() != "asc"
     itens.sort(key=lambda item: item["valor"], reverse=reverse)
     n = max(1, int(top or 10))
@@ -191,7 +183,9 @@ def ranking(
         unidade_medida=ind.unidade_medida,
         filtros_aplicados={"nivel": nivel, "ordem": ordem, "ano": body.get("ano"), "top": n},
         registros=itens,
-        aviso="Ranking calculado no MCP a partir dos valores oficiais.",
+        aviso=(
+            f"Ranking com fórmula oficial ({formula_de(ind.codigo).expressao})."
+        ),
     )
 
 
@@ -206,13 +200,15 @@ def estatisticas(
     recorte = consultar(db, ind, _com_limite(filtros))
     vals = _nums(recorte["registros"])
     if kind == "media":
-        resultado = (sum(vals) / len(vals)) if vals else None
+        # Média de linhas NÃO é indicador oficial. Expor o valor oficial agregado.
+        resultado = recorte.get("valor_oficial")
+        kind = "oficial"
     elif kind == "mediana":
         resultado = _mediana(vals)
     elif kind == "percentil":
         resultado = _percentil(vals, float(filtros.get("percentil") or 50))
     elif kind == "participacao":
-        rec = _agregar(ind, recorte["registros"])
+        rec = recorte.get("valor_oficial")
         rede_filtros = {
             k: v
             for k, v in _com_limite(filtros).items()
@@ -220,7 +216,7 @@ def estatisticas(
         }
         try:
             rede = consultar(db, ind, rede_filtros)
-            total = _agregar(ind, rede["registros"])
+            total = rede.get("valor_oficial")
         except PnpError:
             total = None
         if rec is None or not total:
@@ -240,5 +236,8 @@ def estatisticas(
             "estatistica": kind,
         },
         registros=[{"estatistica": kind, "valor": resultado, "n": len(vals)}],
-        aviso="Estatística calculada no MCP; não é um indicador oficial.",
+        aviso=(
+            f"Estatística derivada. Valor institucional usa "
+            f"{formula_de(ind.codigo).expressao}."
+        ),
     )

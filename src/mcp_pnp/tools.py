@@ -33,7 +33,9 @@ def _descricao(ind: Indicador) -> str:
     meta = f" Meta: {ind.meta}." if ind.meta is not None else ""
     return (
         f"{ind.codigo} — {ind.nome}.{aliases}{meta} "
-        f"Consulta o indicador oficial da PNP. "
+        f"O número institucional/oficial está em valor_oficial "
+        f"(fórmula do Guia: soma do numerador / soma do denominador). "
+        f"Não use a média do campo valor nas linhas de registros. "
         f"Exemplo: Qual a {ind.codigo} do IFMG em 2025?"
     )
 
@@ -272,7 +274,7 @@ def pnp_comparar(
     esquerda: dict[str, Any],
     direita: dict[str, Any],
 ) -> dict[str, Any]:
-    """Compara um indicador entre dois recortes. Resposta com fonte=derivada."""
+    """Compara um indicador entre dois recortes pela fórmula oficial. fonte=derivada."""
     try:
         return comparar(Settings.from_env().db_path, indicador, esquerda, direita)
     except PnpError as err:
@@ -289,7 +291,7 @@ def pnp_evolucao(
     regiao: str | None = None,
     organizacao_academica: str | None = None,
 ) -> dict[str, Any]:
-    """Série anual e variação YoY. Resposta com fonte=derivada."""
+    """Série anual e YoY pela fórmula oficial. fonte=derivada."""
     filtros = {
         "instituicao": instituicao,
         "unidade": unidade,
@@ -316,7 +318,7 @@ def pnp_ranking(
     ano: int | None = None,
     top: int = 10,
 ) -> dict[str, Any]:
-    """Ranking de instituições ou unidades. Resposta com fonte=derivada."""
+    """Ranking pela fórmula oficial (não média de taxas). fonte=derivada."""
     try:
         return ranking(Settings.from_env().db_path, indicador, nivel, ordem, ano, top)
     except PnpError as err:
@@ -334,7 +336,7 @@ def pnp_estatisticas(
     organizacao_academica: str | None = None,
     percentil: float | None = None,
 ) -> dict[str, Any]:
-    """Média, mediana, percentil ou participação % na Rede. fonte=derivada."""
+    """media = valor oficial do Guia; mediana/percentil = distribuição das linhas."""
     filtros: dict[str, Any] = {
         "ano": ano,
         "instituicao": instituicao,
@@ -380,22 +382,25 @@ _EXTRAS: tuple[tuple[Any, str, str], ...] = (
     (
         pnp_comparar,
         "pnp_comparar",
-        "Compara um indicador entre dois recortes. fonte=derivada.",
+        "Compara um indicador entre dois recortes com a fórmula oficial do Guia "
+        "(não é média de taxas). fonte=derivada.",
     ),
     (
         pnp_evolucao,
         "pnp_evolucao",
-        "Série anual e variação YoY de um indicador. fonte=derivada.",
+        "Série anual e YoY com a fórmula oficial do Guia "
+        "(não é média de taxas por curso). fonte=derivada.",
     ),
     (
         pnp_ranking,
         "pnp_ranking",
-        "Ranking de instituições ou unidades. fonte=derivada.",
+        "Ranking de instituições ou unidades com a fórmula oficial do Guia. fonte=derivada.",
     ),
     (
         pnp_estatisticas,
         "pnp_estatisticas",
-        "Média, mediana, percentil ou participação na Rede. fonte=derivada.",
+        "estatistica=media devolve o valor oficial do Guia (não a média das taxas). "
+        "mediana/percentil descrevem a distribuição das linhas. fonte=derivada.",
     ),
     (
         pnp_glossario,

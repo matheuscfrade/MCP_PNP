@@ -12,23 +12,14 @@ Ainda não registrados: pesquisa (PI*), extensão (EX*), polos (PO*), sustentabi
 
 ## Instalação
 
-No repositório principal:
-
 ```powershell
-cd D:\OneDrive\Documentos\devProjects\projects\MCP_PNP
 pip install -e ".[dev]"
-mcp-pnp sync
+mcp-pnp sync --from-dir <pasta-com-os-CSVs-do-Extrator>
 ```
 
-Se estiver neste worktree (`feat/mcp-pnp-mvp`):
+A pasta `data/` e os CSVs do Extrator **não** vão para o Git. Importe localmente (`mcp-pnp sync --from-dir …`) para gerar `data/pnp.sqlite`. Sem sync, as consultas pedem sincronização.
 
-```powershell
-cd D:\OneDrive\Documentos\devProjects\projects\MCP_PNP\.worktrees\feat-mcp-pnp-mvp
-pip install -e ".[dev]"
-mcp-pnp sync
-```
-
-`mcp-pnp sync` baixa os CSVs oficiais do Extrator e popula `data/pnp.sqlite`. Sem sync, as consultas falham pedindo sincronização.
+Indicadores que o Extrator ainda não exporta (ALRAPE, ALVCN, ALGN, ALMGN, ALVTEC, ALVPROF, ALVEJA e outros) estão em `docs/lacunas-extrator.md`.
 
 ## Grok (`~/.grok/config.toml`)
 

@@ -49,15 +49,22 @@ VERBETES: dict[str, dict[str, Any]] = {
     },
     "ENIEA": {
         "codigo": "ENIEA",
-        "definicao": "Índice de eficiência acadêmica do ciclo (concluintes frente a evadidos e retidos).",
-        "formula": "ENCC relativo ao conjunto de concluintes, evadidos e retidos do ciclo.",
+        "definicao": (
+            "Índice de eficiência acadêmica do ciclo: concluintes do ciclo "
+            "acrescidos da projeção dos retidos que devem concluir "
+            "(ponderador = concluintes / (concluintes + evadidos))."
+        ),
+        "formula": (
+            "ENIEA = [C + (C / (C + Ev)) × R] / (C + Ev + R) × 100, "
+            "algebricamente igual a C / (C + Ev) × 100."
+        ),
         "fonte": "Sistec / Guia PNP Indicadores",
         "ressalva": "Indicador de ciclo, não de evasão anual (ENEVA).",
     },
     "ENEVA": {
         "codigo": "ENEVA",
         "definicao": "Percentual de evasão anual das matrículas no ano de referência.",
-        "formula": "Evadidos no ano / matrículas de referência × 100.",
+        "formula": "Σ evadidos / Σ matrículas × 100 (não é média das taxas por curso).",
         "fonte": "Sistec / Guia PNP Indicadores",
         "ressalva": "Diferente da evasão por ciclo (ENEC).",
     },
