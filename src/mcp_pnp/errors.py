@@ -15,6 +15,10 @@ MENSAGENS = {
     ),
     "sem_registros": "Nenhum registro para os filtros informados.",
     "sync_falhou": "Falha ao sincronizar o Extrator PNP.",
+    "download_falhou": (
+        "Falha ao baixar o pnp.sqlite da release. "
+        "Defina PNP_DB_PATH ou rode `mcp-pnp sync --from-dir`."
+    ),
     "fonte_indisponivel": (
         "Indicador oficial sem CSV na base. Não está no MVP do Extrator."
     ),

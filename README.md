@@ -27,6 +27,38 @@ gh release download extrator-2025 -p extrator-pnp-csvs.zip -R matheuscfrade/MCP_
 
 Indicadores que o Extrator ainda não exporta (ALRAPE, ALVCN, ALGN, ALMGN, ALVTEC, ALVPROF, ALVEJA e outros) estão em `docs/lacunas-extrator.md`.
 
+Na primeira execução (stdio ou HTTP), se `data/pnp.sqlite` não existir o servidor baixa o arquivo da release. Para pular: `PNP_SKIP_DB_DOWNLOAD=1`. URL alternativa: `PNP_DB_URL`.
+
+## Servidor remoto (Prefect Horizon)
+
+Hospedagem gratuita do FastMCP. O entrypoint é `server.py:mcp`.
+
+1. Faça push destas alterações para o GitHub.
+2. Entre em [horizon.prefect.io](https://horizon.prefect.io) com a conta GitHub.
+3. Selecione o repositório `MCP_PNP`.
+4. Entrypoint: `server.py:mcp`. Nome sugerido: `pnp`.
+5. Autenticação: desligada (dados públicos do Extrator). Ligue OAuth no painel se quiser restringir.
+6. Deploy. A URL fica `https://<nome>.fastmcp.app/mcp`.
+
+No boot o processo baixa o `pnp.sqlite` (~90 MB) da release `extrator-2025`. O health check responde em `https://<nome>.fastmcp.app/health`.
+
+Claude / Cursor (HTTP):
+
+```json
+{
+  "mcpServers": {
+    "pnp": { "url": "https://pnp.fastmcp.app/mcp" }
+  }
+}
+```
+
+Para testar HTTP local (sem Horizon):
+
+```powershell
+mcp-pnp serve
+# http://127.0.0.1:8000/mcp  e  /health
+```
+
 ## Grok (`~/.grok/config.toml`)
 
 ```toml
