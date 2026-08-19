@@ -26,6 +26,10 @@ DIM_FILTERS = {
 
 def _connect(db_path: Path) -> sqlite3.Connection:
     if not db_path.exists():
+        from mcp_pnp.bootstrap import hydrate_if_needed
+
+        hydrate_if_needed(db_path)
+    if not db_path.exists():
         raise PnpError("base_vazia")
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row

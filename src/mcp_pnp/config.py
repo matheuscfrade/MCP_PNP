@@ -14,7 +14,11 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> Settings:
-        root = Path.cwd() / "data"
+        # Horizon/Lambda só deixa gravar em /tmp; data/ no container é read-only.
+        if _hosted():
+            root = Path("/tmp/pnp")
+        else:
+            root = Path.cwd() / "data"
         max_reg = int(os.environ.get("PNP_MAX_REGISTROS", "200"))
         if max_reg < 1:
             max_reg = 1
@@ -28,3 +32,11 @@ class Settings:
             ).rstrip("/"),
             max_registros=max_reg,
         )
+
+
+def _hosted() -> bool:
+    return bool(
+        os.environ.get("FASTMCP_CLOUD_URL")
+        or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
+        or os.environ.get("LAMBDA_TASK_ROOT")
+    )

@@ -40,7 +40,9 @@ Hospedagem gratuita do FastMCP. O entrypoint é `server.py:mcp`.
 5. Autenticação: desligada (dados públicos do Extrator). Ligue OAuth no painel se quiser restringir.
 6. Deploy. A URL fica `https://<nome>.fastmcp.app/mcp`.
 
-No boot o processo baixa o `pnp.sqlite` (~90 MB) da release `extrator-2025`. O health check responde em `https://<nome>.fastmcp.app/health`.
+O processo sobe sem baixar o banco (o pre-flight do Horizon tem ~15 s). A primeira consulta baixa o `pnp.sqlite` (~90 MB) da release `extrator-2025` para `/tmp`. Se o repositório/release for privado, deixe a release pública **ou** defina `GITHUB_TOKEN` nas variáveis do Horizon.
+
+O health check responde em `https://<nome>.fastmcp.app/health`.
 
 Claude / Cursor (HTTP):
 

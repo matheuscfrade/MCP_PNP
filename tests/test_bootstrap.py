@@ -3,7 +3,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from mcp_pnp.bootstrap import DEFAULT_DB_URL, ensure_database
+from mcp_pnp.bootstrap import DEFAULT_DB_URL, ensure_database, hydrate_if_needed
 from mcp_pnp.config import Settings
 from mcp_pnp.errors import PnpError
 
@@ -64,6 +64,14 @@ def test_rejeita_arquivo_invalido(tmp_path: Path):
     assert err.value.codigo == "download_falhou"
     assert not settings.db_path.exists()
     assert not (settings.db_path.parent / "pnp.sqlite.part").exists()
+
+
+def test_hydrate_ignora_outro_caminho(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("PNP_DB_PATH", str(tmp_path / "oficial.sqlite"))
+    outro = tmp_path / "nope.sqlite"
+    hydrate_if_needed(outro)
+    assert not outro.exists()
+    assert not (tmp_path / "oficial.sqlite").exists()
 
 
 def test_skip_download(tmp_path: Path, monkeypatch):

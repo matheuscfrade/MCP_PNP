@@ -15,6 +15,32 @@ DEFAULT_DB_URL = (
 _SQLITE_MAGIC = b"SQLite format 3"
 
 
+def _download_headers() -> dict[str, str]:
+    token = (
+        os.environ.get("PNP_GITHUB_TOKEN")
+        or os.environ.get("GITHUB_TOKEN")
+        or os.environ.get("GH_TOKEN")
+        or ""
+    ).strip()
+    if not token:
+        return {}
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/octet-stream",
+    }
+
+
+def hydrate_if_needed(db_path: Path) -> None:
+    """Baixa o SQLite só se o caminho for o da Settings (não nos testes)."""
+    settings = Settings.from_env()
+    if settings.db_path.resolve() != db_path.resolve():
+        return
+    try:
+        ensure_database(settings)
+    except PnpError:
+        return
+
+
 def _skip_download() -> bool:
     return os.environ.get("PNP_SKIP_DB_DOWNLOAD", "").strip().lower() in {
         "1",
@@ -45,13 +71,19 @@ def ensure_database(
         return path
 
     url = os.environ.get("PNP_DB_URL", DEFAULT_DB_URL).strip() or DEFAULT_DB_URL
-    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        path = Path("/tmp") / path.name
+        path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".part")
+    headers = _download_headers()
     try:
         with httpx.Client(
             transport=transport,
             timeout=300.0,
             follow_redirects=True,
+            headers=headers,
         ) as http:
             with http.stream("GET", url) as resp:
                 resp.raise_for_status()

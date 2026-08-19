@@ -229,6 +229,10 @@ def pnp_status_base() -> dict[str, Any]:
     settings = Settings.from_env()
     path = settings.db_path
     if not path.exists():
+        from mcp_pnp.bootstrap import hydrate_if_needed
+
+        hydrate_if_needed(path)
+    if not path.exists():
         return {
             "db_path": str(path),
             "existe": False,

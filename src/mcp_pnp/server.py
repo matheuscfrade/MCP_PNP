@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-
 from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from mcp_pnp.bootstrap import ensure_database
 from mcp_pnp.config import Settings
 from mcp_pnp.glossary import explicar
 from mcp_pnp.registry import listar
@@ -67,12 +63,6 @@ def _register_prompts(mcp: FastMCP) -> None:
         )
 
 
-@asynccontextmanager
-async def _lifespan(_server: FastMCP) -> AsyncIterator[None]:
-    ensure_database()
-    yield
-
-
 def _register_http_routes(mcp: FastMCP) -> None:
     @mcp.custom_route("/health", methods=["GET"])
     async def health_check(_request: Request) -> JSONResponse:
@@ -88,7 +78,7 @@ def _register_http_routes(mcp: FastMCP) -> None:
 
 
 def create_server() -> FastMCP:
-    mcp = FastMCP("pnp", lifespan=_lifespan)
+    mcp = FastMCP("pnp")
     register_all(mcp)
     _register_resources(mcp)
     _register_prompts(mcp)
