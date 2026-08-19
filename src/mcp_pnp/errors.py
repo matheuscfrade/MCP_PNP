@@ -19,6 +19,14 @@ MENSAGENS = {
         "Indicador oficial sem CSV na base. Não está no MVP do Extrator."
     ),
     "limite_invalido": "limite deve estar entre 1 e 500.",
+    "filtro_indisponivel": (
+        "Esse recorte não existe na tabela do indicador. "
+        "Use pnp_listar_valores e pnp_listar_indicadores."
+    ),
+    "agrupamento_invalido": (
+        "Agrupamento inválido para este indicador. "
+        "Use um campo nativo da tabela (tipo_curso, modalidade, unidade…)."
+    ),
 }
 
 

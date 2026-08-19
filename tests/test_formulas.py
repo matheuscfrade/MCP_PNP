@@ -28,14 +28,15 @@ def db_formulas(tmp_path: Path) -> Path:
     # Oficial 2025 IFMG-like: (10+20)/ (100+10+50) = 18,75%. Média das taxas ≠ isso.
     conn.executemany(
         """INSERT INTO evasao(
-            ano, instituicao_sigla, unidade, n_evadidos, n_matriculas, taxa_evasao
-        ) VALUES (?, ?, ?, ?, ?, ?)""",
+            ano, instituicao_sigla, unidade, n_evadidos, n_matriculas, taxa_evasao,
+            tipo_curso, modalidade
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         [
-            (2025, "IFMG", "Campus A", 10, 100, 0.10),
-            (2025, "IFMG", "Campus B", 20, 10, 2.00),
-            (2025, "IFMG", "Campus C", None, 50, None),
-            (2025, "IFB", "Campus X", 5, 200, 0.025),
-            (2024, "IFMG", "Campus A", 8, 80, 0.10),
+            (2025, "IFMG", "Campus A", 10, 100, 0.10, "Técnico", "Educação Presencial"),
+            (2025, "IFMG", "Campus B", 20, 10, 2.00, "Qualificação Profissional (FIC)", "Educação a Distância"),
+            (2025, "IFMG", "Campus C", None, 50, None, "Técnico", "Educação Presencial"),
+            (2025, "IFB", "Campus X", 5, 200, 0.025, "Técnico", "Educação Presencial"),
+            (2024, "IFMG", "Campus A", 8, 80, 0.10, "Técnico", "Educação Presencial"),
         ],
     )
     # ENIEA/ENCC/ENEC/ENREC — dois campi IFMG.

@@ -66,3 +66,6 @@ Exemplos:
 - “Qual a ENME do IFMG em 2025?”
 - “A ALMTEC está nos 50%?”
 - “Compare a ALRMP do IFMG com a Rede.”
+- “Qual a ENEVA presencial do Campus Formiga?”
+
+Recortes extras (modalidade, tipo de curso…) só existem quando a **página do painel/Extrator** daquele indicador publica o slicer. ENEVA e ENME aceitam modalidade; ENEC e RAP não. Depois de atualizar o schema, recarregue os CSVs (`mcp-pnp sync --from-dir <pasta>`) para a evasão ganhar `ModalidadeEnsino`.

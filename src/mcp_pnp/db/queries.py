@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from mcp_pnp.config import Settings
-from mcp_pnp.db.schema import TABLES
+from mcp_pnp.db.schema import TABLES, apply_schema, fields_of
 from mcp_pnp.envelope import ok
 from mcp_pnp.errors import PnpError
 from mcp_pnp.formulas import Formula, formula_de
@@ -35,6 +35,7 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     if n == 0:
         conn.close()
         raise PnpError("base_vazia")
+    apply_schema(conn)
     return conn
 
 
@@ -50,11 +51,20 @@ def _filtros_sql(
     applied: dict[str, Any],
     formula: Formula | None = None,
 ) -> tuple[list[str], list[Any]]:
+    from mcp_pnp.dimensions import detalhe_indisponivel, mapeamento_filtros, todos_recortes_painel
+
     where: list[str] = []
     params: list[Any] = []
-    mapping = dict(DIM_FILTERS)
-    for extra in indicador.extra_filtros:
-        mapping[extra] = extra
+    mapping = mapeamento_filtros(indicador)
+    conhecidos = set(mapping) | {"limite", "offset"}
+    for key, val in applied.items():
+        if val is None or key in conhecidos:
+            continue
+        if key == "excluir_fic" or key in todos_recortes_painel():
+            raise PnpError(
+                "filtro_indisponivel",
+                detalhe_indisponivel(key, indicador),
+            )
     for key, col in mapping.items():
         val = applied.get(key)
         if val is None or key in {"limite", "offset"}:
@@ -90,11 +100,11 @@ def valor_oficial(
     group_sql = ""
     group_select = ""
     if group_by:
-        if group_by not in DIM_FILTERS.values() and group_by not in {
-            "instituicao_sigla",
-            "unidade",
-        }:
-            raise ValueError(group_by)
+        if group_by not in fields_of(table):
+            raise PnpError(
+                "agrupamento_invalido",
+                f"'{group_by}' não existe em {table}",
+            )
         group_select = f"{group_by} AS grupo, "
         group_sql = f" GROUP BY {group_by}"
     sql = f"SELECT {group_select}{select} FROM {table} {clause}{group_sql}"
@@ -229,7 +239,7 @@ def consultar(
         registros = []
         for row in rows:
             item = dict(row)
-            item["valor"] = item.get(indicador.coluna)
+            item["valor"] = _valor_exibido(indicador, item.get(indicador.coluna))
             registros.append(item)
 
         oficial = valor_oficial(conn, indicador, applied)
@@ -263,5 +273,116 @@ def consultar(
         body["numerador"] = componentes.get("numerador")
         body["denominador"] = componentes.get("denominador")
         return body
+    finally:
+        conn.close()
+
+
+def _valor_exibido(indicador: Indicador, raw: Any) -> Any:
+    """ENEVA no Extrator grava taxa 0–1; o cartão e valor_oficial estão em %."""
+    if raw is None:
+        return None
+    if indicador.codigo == "ENEVA":
+        try:
+            numero = float(raw)
+        except (TypeError, ValueError):
+            return raw
+        if 0 <= numero <= 1:
+            return numero * 100.0
+    return raw
+
+
+def intervalo_anos(conn: sqlite3.Connection, tabela: str) -> tuple[int, int]:
+    if tabela not in TABLES:
+        raise ValueError(tabela)
+    row = conn.execute(f"SELECT MIN(ano), MAX(ano) FROM {tabela}").fetchone()
+    if row is None or row[0] is None:
+        raise PnpError("sem_registros")
+    return int(row[0]), int(row[1])
+
+
+def cobertura_edicoes(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+    edicoes = [
+        dict(r) for r in conn.execute("SELECT * FROM edicoes ORDER BY ano").fetchall()
+    ]
+    fatos = [t for t in TABLES if t not in {"edicoes", "sync_log"}]
+    for rec in edicoes:
+        cobertura: dict[str, int] = {}
+        for tabela in fatos:
+            try:
+                n = conn.execute(
+                    f"SELECT COUNT(*) FROM {tabela} WHERE ano = ?",
+                    (rec["ano"],),
+                ).fetchone()[0]
+            except sqlite3.Error:
+                n = 0
+            if n:
+                cobertura[tabela] = int(n)
+        rec["cobertura"] = cobertura
+    return edicoes
+
+
+def listar_valores_campo(
+    db_path: Path,
+    campo: str,
+    filtros: dict[str, Any],
+) -> dict[str, Any]:
+    from mcp_pnp.dimensions import campos_listaveis, tabelas_com
+
+    permitidos = set(campos_listaveis())
+    if campo not in permitidos:
+        raise PnpError(
+            "filtro_indisponivel",
+            f"Campo '{campo}' não é dimensão listável. Use: {', '.join(campos_listaveis())}.",
+        )
+    tabelas = tabelas_com(campo)
+    if not tabelas:
+        raise PnpError("filtro_indisponivel", f"Campo '{campo}' não existe na base.")
+
+    conn = _connect(db_path)
+    try:
+        valores: dict[str, None] = {}
+        origens: list[str] = []
+        where_keys = {
+            "ano": "ano",
+            "instituicao": "instituicao_sigla",
+            "unidade": "unidade",
+            "uf": "uf",
+            "regiao": "regiao",
+        }
+        for tabela in tabelas:
+            fields = fields_of(tabela)
+            if campo not in fields:
+                continue
+            clauses: list[str] = [f"{campo} IS NOT NULL"]
+            params: list[Any] = []
+            for key, col in where_keys.items():
+                val = filtros.get(key)
+                if val is None or col not in fields:
+                    continue
+                if key == "instituicao":
+                    clauses.append(f"UPPER({col}) = UPPER(?)")
+                else:
+                    clauses.append(f"{col} = ?")
+                params.append(val)
+            sql = (
+                f"SELECT DISTINCT {campo} AS valor FROM {tabela} "
+                f"WHERE {' AND '.join(clauses)} ORDER BY 1"
+            )
+            rows = conn.execute(sql, params).fetchall()
+            if rows:
+                origens.append(tabela)
+            for row in rows:
+                valores[str(row["valor"])] = None
+        registros = [{"valor": v} for v in valores]
+        return ok(
+            fonte="oficial",
+            edicao_pnp=None,
+            ano=filtros.get("ano"),
+            indicador=campo,
+            unidade_medida="contagem",
+            filtros_aplicados={k: v for k, v in filtros.items() if v is not None},
+            registros=registros,
+            aviso=f"Valores distintos de {campo} em {', '.join(origens) or 'nenhuma tabela'}.",
+        )
     finally:
         conn.close()

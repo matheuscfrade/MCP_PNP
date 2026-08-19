@@ -3,7 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from mcp_pnp.db.queries import agregar_oficial, consultar
+from mcp_pnp.db.queries import (
+    _connect,
+    agregar_oficial,
+    consultar,
+    intervalo_anos,
+    ultimo_ano,
+)
 from mcp_pnp.envelope import ok
 from mcp_pnp.errors import PnpError
 from mcp_pnp.formulas import formula_de
@@ -108,13 +114,22 @@ def evolucao(
     db: Path,
     indicador: Indicador | str,
     filtros: dict[str, Any],
-    ano_inicio: int,
-    ano_fim: int,
+    ano_inicio: int | None = None,
+    ano_fim: int | None = None,
 ) -> dict[str, Any]:
     ind = _resolve(indicador)
+    inicio, fim = ano_inicio, ano_fim
+    if inicio is None or fim is None:
+        conn = _connect(db)
+        try:
+            minimo, maximo = intervalo_anos(conn, ind.tabela)
+        finally:
+            conn.close()
+        inicio = minimo if inicio is None else inicio
+        fim = maximo if fim is None else fim
     serie: list[dict[str, Any]] = []
     prev: float | None = None
-    for ano in range(int(ano_inicio), int(ano_fim) + 1):
+    for ano in range(int(inicio), int(fim) + 1):
         try:
             body = consultar(db, ind, _com_limite({**filtros, "ano": ano}))
         except PnpError:
@@ -135,8 +150,8 @@ def evolucao(
         unidade_medida=ind.unidade_medida,
         filtros_aplicados={
             **{k: v for k, v in filtros.items() if v is not None},
-            "ano_inicio": ano_inicio,
-            "ano_fim": ano_fim,
+            "ano_inicio": inicio,
+            "ano_fim": fim,
         },
         registros=serie,
         aviso=(
@@ -153,22 +168,30 @@ def ranking(
     ordem: str,
     ano: int | None,
     top: int,
+    filtros: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    from mcp_pnp.dimensions import GROUPABLES, coluna_agrupavel
+
     ind = _resolve(indicador)
-    if nivel not in {"instituicao", "unidade"}:
-        raise PnpError("sem_registros", f"nível inválido: {nivel}")
-    chave = "instituicao_sigla" if nivel == "instituicao" else "unidade"
-    filtros: dict[str, Any] = {"limite": 500}
+    try:
+        chave = coluna_agrupavel(nivel, ind)
+    except KeyError as exc:
+        raise PnpError("agrupamento_invalido", f"nível inválido: {nivel}") from exc
+    rotulo = nivel if nivel in GROUPABLES else chave
+    applied: dict[str, Any] = dict(filtros or {})
+    applied["limite"] = 500
     if ano is not None:
-        filtros["ano"] = ano
-    body = consultar(db, ind, filtros)
-    oficiais = agregar_oficial(db, ind, {k: v for k, v in filtros.items() if k != "limite"}, group_by=chave)
+        applied["ano"] = ano
+    body = consultar(db, ind, applied)
+    oficiais = agregar_oficial(
+        db, ind, {k: v for k, v in applied.items() if k != "limite"}, group_by=chave
+    )
     itens: list[dict[str, Any]] = []
     for rec in oficiais:
         nome = rec.get(chave)
         if not nome or rec.get("valor") is None:
             continue
-        itens.append({nivel: nome, "valor": rec["valor"]})
+        itens.append({rotulo: nome, "valor": rec["valor"]})
     reverse = str(ordem).lower() != "asc"
     itens.sort(key=lambda item: item["valor"], reverse=reverse)
     n = max(1, int(top or 10))
@@ -181,10 +204,69 @@ def ranking(
         ano=body.get("ano"),
         indicador=ind.codigo,
         unidade_medida=ind.unidade_medida,
-        filtros_aplicados={"nivel": nivel, "ordem": ordem, "ano": body.get("ano"), "top": n},
+        filtros_aplicados={
+            **{k: v for k, v in applied.items() if v is not None and k != "limite"},
+            "nivel": nivel,
+            "ordem": ordem,
+            "top": n,
+        },
         registros=itens,
         aviso=(
             f"Ranking com fórmula oficial ({formula_de(ind.codigo).expressao})."
+        ),
+    )
+
+
+def agregar(
+    db: Path,
+    indicador: Indicador | str,
+    group_by: str,
+    filtros: dict[str, Any],
+) -> dict[str, Any]:
+    from mcp_pnp.dimensions import GROUPABLES, coluna_agrupavel
+
+    ind = _resolve(indicador)
+    try:
+        chave = coluna_agrupavel(group_by, ind)
+    except KeyError as exc:
+        raise PnpError("agrupamento_invalido", f"group_by inválido: {group_by}") from exc
+    rotulo = group_by if group_by in GROUPABLES else chave
+    applied = dict(filtros)
+    if applied.get("ano") is None:
+        conn = _connect(db)
+        try:
+            applied["ano"] = ultimo_ano(conn)
+        finally:
+            conn.close()
+    oficiais = agregar_oficial(db, ind, applied, group_by=chave)
+    itens = []
+    for rec in oficiais:
+        nome = rec.get(chave)
+        if nome is None or rec.get("valor") is None:
+            continue
+        itens.append(
+            {
+                rotulo: nome,
+                "valor": rec["valor"],
+                "numerador": rec.get("numerador"),
+                "denominador": rec.get("denominador"),
+            }
+        )
+    itens.sort(key=lambda item: item["valor"], reverse=True)
+    return ok(
+        fonte="derivada",
+        edicao_pnp=None,
+        ano=applied.get("ano"),
+        indicador=ind.codigo,
+        unidade_medida=ind.unidade_medida,
+        filtros_aplicados={
+            **{k: v for k, v in applied.items() if v is not None},
+            "group_by": group_by,
+        },
+        registros=itens,
+        aviso=(
+            f"Agregação com fórmula oficial ({formula_de(ind.codigo).expressao}). "
+            f"Quebra nativa por {chave}."
         ),
     )
 

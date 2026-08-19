@@ -7,7 +7,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from mcp_pnp.db.schema import TABLES
+from mcp_pnp.db.schema import TABLES, apply_schema
 from mcp_pnp.errors import PnpError
 
 HEADER_MAP = {
@@ -119,6 +119,7 @@ def load_csv(
 
     conn = sqlite3.connect(db_path)
     try:
+        apply_schema(conn)
         cols_info = conn.execute(f"PRAGMA table_info({tabela})").fetchall()
         col_types = {row[1]: (row[2] or "").upper() for row in cols_info}
         allowed = set(col_types)

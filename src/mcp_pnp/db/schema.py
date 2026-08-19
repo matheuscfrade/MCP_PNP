@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import re
 import sqlite3
+
+_COL_RE = re.compile(r"(\w+)\s+(INTEGER|REAL|TEXT)", re.I)
 
 DIM = """
     ano INTEGER,
@@ -34,7 +37,7 @@ TABLES = {
     """,
     "oferta": f"CREATE TABLE IF NOT EXISTS oferta ({DIM}, n_cursos REAL, n_matriculas REAL, mateq REAL, n_vagas REAL, n_inscritos REAL, n_ingressantes REAL, n_concluintes REAL, n_estruturas REAL, n_unidades REAL, n_ciclos REAL, tipo_curso TEXT, tipo_oferta TEXT, modalidade TEXT, turno TEXT, eixo TEXT, subeixo TEXT, nome_curso TEXT, fonte_financiamento TEXT, programa TEXT)",
     "situacao_matricula": f"CREATE TABLE IF NOT EXISTS situacao_matricula ({DIM}, categoria_situacao TEXT, nome_situacao TEXT, fluxo_retido TEXT, motivo TEXT, n_matriculas REAL)",
-    "evasao": f"CREATE TABLE IF NOT EXISTS evasao ({DIM}, taxa_evasao REAL, n_evadidos REAL, n_matriculas REAL, nome_curso TEXT, tipo_curso TEXT, eixo TEXT)",
+    "evasao": f"CREATE TABLE IF NOT EXISTS evasao ({DIM}, taxa_evasao REAL, n_evadidos REAL, n_matriculas REAL, nome_curso TEXT, tipo_curso TEXT, eixo TEXT, subeixo TEXT, tipo_oferta TEXT, modalidade TEXT, turno TEXT, programa TEXT)",
     "eficiencia": f"CREATE TABLE IF NOT EXISTS eficiencia ({DIM}, iea REAL, taxa_conclusao_ciclo REAL, taxa_evasao_ciclo REAL, taxa_retencao_ciclo REAL, n_concluidos REAL, n_evadidos REAL, n_retidos REAL)",
     "rap": f"CREATE TABLE IF NOT EXISTS rap ({DIM}, rap REAL, rap_presencial REAL, mateq_rap REAL, profeq REAL)",
     "verticalizacao": f"CREATE TABLE IF NOT EXISTS verticalizacao ({DIM}, iv REAL, vagas_cg REAL, vagas_ct REAL, vagas_pg REAL, vagas_qp REAL)",
@@ -53,8 +56,33 @@ TABLES = {
 }
 
 
+def parse_ddl_columns(ddl: str) -> list[tuple[str, str]]:
+    return [(m.group(1), m.group(2).upper()) for m in _COL_RE.finditer(ddl)]
+
+
+def fields_of(tabela: str) -> set[str]:
+    ddl = TABLES.get(tabela)
+    if not ddl:
+        return set()
+    return {nome for nome, _tipo in parse_ddl_columns(ddl)}
+
+
 def apply_schema(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA foreign_keys = ON")
     for ddl in TABLES.values():
         conn.execute(ddl)
+    _ensure_columns(conn)
     conn.commit()
+
+
+def _ensure_columns(conn: sqlite3.Connection) -> None:
+    """ALTER TABLE para bases já criadas com schema antigo (ex.: evasao sem modalidade)."""
+    for tabela, ddl in TABLES.items():
+        existentes = {
+            row[1] for row in conn.execute(f"PRAGMA table_info({tabela})").fetchall()
+        }
+        if not existentes:
+            continue
+        for nome, tipo in parse_ddl_columns(ddl):
+            if nome not in existentes:
+                conn.execute(f"ALTER TABLE {tabela} ADD COLUMN {nome} {tipo}")

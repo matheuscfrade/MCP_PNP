@@ -1,6 +1,8 @@
 # Lacunas do Extrator (completar depois)
 
-O painel Power BI da PNP calcula alguns indicadores no modelo semântico (microdados: `dimCurso.turnoCurso`, eixo, financiamento). O Extrator 2.3.0 (`/pnpquery/1`–`18`) **não exporta** esses recortes. Não é falha de importação: as páginas ao vivo do Extrator têm as mesmas colunas dos CSVs locais.
+O painel Power BI da PNP calcula alguns indicadores no modelo semântico (microdados: `dimCurso.turnoCurso`, eixo, financiamento). O Extrator 2.3.0 (`/pnpquery/1`–`18`) **não exporta** esses recortes em todos os conjuntos. Não é falha de importação: as páginas ao vivo do Extrator têm as mesmas colunas dos CSVs locais.
+
+A query **10** (Taxa de Evasão) **traz** `ModalidadeEnsino`, `tipoOferta`, `turnoCurso`, `nomePrograma` e `SubeixoTecnologico`. A query **3** (oferta) também tem `ModalidadeEnsino`. As queries **4** (situação) e **11** (eficiência/ENEC) não têm modalidade — não cruzar tabelas para inventar o recorte.
 
 Conferido em 2026-08-18 contra o painel (IFMG, ano-base 2025) e contra `https://moduloextratorpnp.mec.gov.br/pnpquery/{id}`.
 

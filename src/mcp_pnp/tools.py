@@ -6,15 +6,16 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from mcp_pnp.analysis import comparar, estatisticas, evolucao, ranking
+from mcp_pnp.analysis import agregar, comparar, estatisticas, evolucao, ranking
 from mcp_pnp.config import Settings
-from mcp_pnp.db.queries import _connect, consultar
+from mcp_pnp.db.queries import _connect, cobertura_edicoes, consultar, listar_valores_campo
 from mcp_pnp.db.schema import TABLES
+from mcp_pnp.dimensions import extras_da_assinatura, filtros_nativos
 from mcp_pnp.envelope import ok
 from mcp_pnp.errors import PnpError
 from mcp_pnp.glossary import explicar
 from mcp_pnp.ingest.sync import sync
-from mcp_pnp.registry import INDICADORES_MVP, Indicador, listar
+from mcp_pnp.registry import INDICADORES_MVP, Indicador, get, listar
 
 _COMMON: tuple[tuple[str, type], ...] = (
     ("ano", int | None),
@@ -27,12 +28,17 @@ _COMMON: tuple[tuple[str, type], ...] = (
     ("offset", int | None),
 )
 
-
 def _descricao(ind: Indicador) -> str:
     aliases = f" Aliases: {', '.join(ind.aliases)}." if ind.aliases else ""
     meta = f" Meta: {ind.meta}." if ind.meta is not None else ""
+    recortes = filtros_nativos(ind)
+    painel = (
+        f" Recortes do painel: {', '.join(recortes)}."
+        if recortes
+        else " Sem recorte além de ano/instituição/unidade/UF/região."
+    )
     return (
-        f"{ind.codigo} — {ind.nome}.{aliases}{meta} "
+        f"{ind.codigo} — {ind.nome}.{aliases}{meta}{painel} "
         f"O número institucional/oficial está em valor_oficial "
         f"(fórmula do Guia: soma do numerador / soma do denominador). "
         f"Não use a média do campo valor nas linhas de registros. "
@@ -56,13 +62,13 @@ def _make_consulta(indicador: Indicador):
         )
         for name, ann in _COMMON
     ]
-    for extra in indicador.extra_filtros:
+    for extra, ann in extras_da_assinatura(indicador):
         params.append(
             inspect.Parameter(
                 extra,
                 inspect.Parameter.KEYWORD_ONLY,
                 default=None,
-                annotation=str | None,
+                annotation=ann,
             )
         )
     _consulta.__signature__ = inspect.Signature(
@@ -86,7 +92,7 @@ def pnp_listar_edicoes() -> dict[str, Any]:
     except PnpError as err:
         return err.as_dict()
     try:
-        registros = _rows(conn, "SELECT * FROM edicoes ORDER BY ano")
+        registros = cobertura_edicoes(conn)
         return ok(
             fonte="oficial",
             edicao_pnp=None,
@@ -95,6 +101,7 @@ def pnp_listar_edicoes() -> dict[str, Any]:
             unidade_medida="contagem",
             filtros_aplicados={},
             registros=registros,
+            aviso="cobertura lista tabelas com linha naquele ano (não é presença de todo indicador).",
         )
     finally:
         conn.close()
@@ -193,6 +200,8 @@ def pnp_listar_indicadores(somente_oficial: bool = False) -> dict[str, Any]:
             "unidade_medida": i.unidade_medida,
             "aliases": list(i.aliases),
             "meta": i.meta,
+            "tabela": i.tabela,
+            "filtros": list(filtros_nativos(i)),
         }
         for i in items
     ]
@@ -269,6 +278,54 @@ def pnp_sincronizar(forcar: bool = False) -> dict[str, Any]:
         return err.as_dict()
 
 
+def _filtros_recorte(**kwargs: Any) -> dict[str, Any]:
+    return {k: v for k, v in kwargs.items() if v is not None}
+
+
+def pnp_consultar(
+    indicador: str,
+    ano: int | None = None,
+    instituicao: str | None = None,
+    unidade: str | None = None,
+    uf: str | None = None,
+    regiao: str | None = None,
+    organizacao_academica: str | None = None,
+    tipo_curso: str | None = None,
+    tipo_oferta: str | None = None,
+    modalidade: str | None = None,
+    turno: str | None = None,
+    eixo: str | None = None,
+    subeixo: str | None = None,
+    nome_curso: str | None = None,
+    programa: str | None = None,
+    limite: int | None = None,
+    offset: int | None = None,
+) -> dict[str, Any]:
+    """Consulta um indicador pela sigla. Recortes extras só os do painel daquele indicador."""
+    filtros = _filtros_recorte(
+        ano=ano,
+        instituicao=instituicao,
+        unidade=unidade,
+        uf=uf,
+        regiao=regiao,
+        organizacao_academica=organizacao_academica,
+        tipo_curso=tipo_curso,
+        tipo_oferta=tipo_oferta,
+        modalidade=modalidade,
+        turno=turno,
+        eixo=eixo,
+        subeixo=subeixo,
+        nome_curso=nome_curso,
+        programa=programa,
+        limite=limite,
+        offset=offset,
+    )
+    try:
+        return consultar(Settings.from_env().db_path, get(indicador), filtros)
+    except PnpError as err:
+        return err.as_dict()
+
+
 def pnp_comparar(
     indicador: str,
     esquerda: dict[str, Any],
@@ -283,27 +340,43 @@ def pnp_comparar(
 
 def pnp_evolucao(
     indicador: str,
-    ano_inicio: int,
-    ano_fim: int,
+    ano_inicio: int | None = None,
+    ano_fim: int | None = None,
     instituicao: str | None = None,
     unidade: str | None = None,
     uf: str | None = None,
     regiao: str | None = None,
     organizacao_academica: str | None = None,
+    tipo_curso: str | None = None,
+    tipo_oferta: str | None = None,
+    modalidade: str | None = None,
+    turno: str | None = None,
+    eixo: str | None = None,
+    subeixo: str | None = None,
+    nome_curso: str | None = None,
+    programa: str | None = None,
 ) -> dict[str, Any]:
-    """Série anual e YoY pela fórmula oficial. fonte=derivada."""
-    filtros = {
-        "instituicao": instituicao,
-        "unidade": unidade,
-        "uf": uf,
-        "regiao": regiao,
-        "organizacao_academica": organizacao_academica,
-    }
+    """Série anual e YoY pela fórmula oficial. Recortes só os do painel do indicador."""
+    filtros = _filtros_recorte(
+        instituicao=instituicao,
+        unidade=unidade,
+        uf=uf,
+        regiao=regiao,
+        organizacao_academica=organizacao_academica,
+        tipo_curso=tipo_curso,
+        tipo_oferta=tipo_oferta,
+        modalidade=modalidade,
+        turno=turno,
+        eixo=eixo,
+        subeixo=subeixo,
+        nome_curso=nome_curso,
+        programa=programa,
+    )
     try:
         return evolucao(
             Settings.from_env().db_path,
             indicador,
-            {k: v for k, v in filtros.items() if v is not None},
+            filtros,
             ano_inicio,
             ano_fim,
         )
@@ -317,10 +390,91 @@ def pnp_ranking(
     ordem: str = "desc",
     ano: int | None = None,
     top: int = 10,
+    instituicao: str | None = None,
+    unidade: str | None = None,
+    uf: str | None = None,
+    regiao: str | None = None,
+    organizacao_academica: str | None = None,
+    tipo_curso: str | None = None,
+    tipo_oferta: str | None = None,
+    modalidade: str | None = None,
+    turno: str | None = None,
+    eixo: str | None = None,
 ) -> dict[str, Any]:
-    """Ranking pela fórmula oficial (não média de taxas). fonte=derivada."""
+    """Ranking pela fórmula oficial. nivel só hierarquia ou recorte do painel daquele indicador."""
+    filtros = _filtros_recorte(
+        instituicao=instituicao,
+        unidade=unidade,
+        uf=uf,
+        regiao=regiao,
+        organizacao_academica=organizacao_academica,
+        tipo_curso=tipo_curso,
+        tipo_oferta=tipo_oferta,
+        modalidade=modalidade,
+        turno=turno,
+        eixo=eixo,
+    )
     try:
-        return ranking(Settings.from_env().db_path, indicador, nivel, ordem, ano, top)
+        return ranking(
+            Settings.from_env().db_path, indicador, nivel, ordem, ano, top, filtros
+        )
+    except PnpError as err:
+        return err.as_dict()
+
+
+def pnp_agregar(
+    indicador: str,
+    group_by: str,
+    ano: int | None = None,
+    instituicao: str | None = None,
+    unidade: str | None = None,
+    uf: str | None = None,
+    regiao: str | None = None,
+    organizacao_academica: str | None = None,
+    tipo_curso: str | None = None,
+    tipo_oferta: str | None = None,
+    modalidade: str | None = None,
+    turno: str | None = None,
+    eixo: str | None = None,
+) -> dict[str, Any]:
+    """Quebra um indicador pela fórmula oficial. group_by só recorte do painel daquele indicador."""
+    filtros = _filtros_recorte(
+        ano=ano,
+        instituicao=instituicao,
+        unidade=unidade,
+        uf=uf,
+        regiao=regiao,
+        organizacao_academica=organizacao_academica,
+        tipo_curso=tipo_curso,
+        tipo_oferta=tipo_oferta,
+        modalidade=modalidade,
+        turno=turno,
+        eixo=eixo,
+    )
+    try:
+        return agregar(Settings.from_env().db_path, indicador, group_by, filtros)
+    except PnpError as err:
+        return err.as_dict()
+
+
+def pnp_listar_valores(
+    campo: str,
+    ano: int | None = None,
+    instituicao: str | None = None,
+    unidade: str | None = None,
+    uf: str | None = None,
+    regiao: str | None = None,
+) -> dict[str, Any]:
+    """Valores distintos de uma dimensão (modalidade, tipo_curso, unidade…) em qualquer tabela que a tenha."""
+    filtros = _filtros_recorte(
+        ano=ano,
+        instituicao=instituicao,
+        unidade=unidade,
+        uf=uf,
+        regiao=regiao,
+    )
+    try:
+        return listar_valores_campo(Settings.from_env().db_path, campo, filtros)
     except PnpError as err:
         return err.as_dict()
 
@@ -334,24 +488,28 @@ def pnp_estatisticas(
     uf: str | None = None,
     regiao: str | None = None,
     organizacao_academica: str | None = None,
+    tipo_curso: str | None = None,
+    modalidade: str | None = None,
     percentil: float | None = None,
 ) -> dict[str, Any]:
     """media = valor oficial do Guia; mediana/percentil = distribuição das linhas."""
-    filtros: dict[str, Any] = {
-        "ano": ano,
-        "instituicao": instituicao,
-        "unidade": unidade,
-        "uf": uf,
-        "regiao": regiao,
-        "organizacao_academica": organizacao_academica,
-    }
+    filtros: dict[str, Any] = _filtros_recorte(
+        ano=ano,
+        instituicao=instituicao,
+        unidade=unidade,
+        uf=uf,
+        regiao=regiao,
+        organizacao_academica=organizacao_academica,
+        tipo_curso=tipo_curso,
+        modalidade=modalidade,
+    )
     if percentil is not None:
         filtros["percentil"] = percentil
     try:
         return estatisticas(
             Settings.from_env().db_path,
             indicador,
-            {k: v for k, v in filtros.items() if v is not None},
+            filtros,
             estatistica,
         )
     except PnpError as err:
@@ -380,21 +538,42 @@ _EXTRAS: tuple[tuple[Any, str, str], ...] = (
         "Lista indicadores do MVP (código, nome, família, oficial).",
     ),
     (
+        pnp_consultar,
+        "pnp_consultar",
+        "Consulta qualquer indicador do catálogo pela sigla (ENEVA, ENME…). "
+        "Recortes extras só os do painel PNP daquele indicador "
+        "(veja pnp_listar_indicadores.filtros). Recorte inexistente no painel é rejeitado.",
+    ),
+    (
+        pnp_listar_valores,
+        "pnp_listar_valores",
+        "Valores distintos de uma dimensão em qualquer tabela que a tenha "
+        "(modalidade, tipo_curso, unidade, eixo…).",
+    ),
+    (
         pnp_comparar,
         "pnp_comparar",
         "Compara um indicador entre dois recortes com a fórmula oficial do Guia "
-        "(não é média de taxas). fonte=derivada.",
+        "(não é média de taxas). fonte=derivada. Recortes no dict esquerda/direita.",
     ),
     (
         pnp_evolucao,
         "pnp_evolucao",
-        "Série anual e YoY com a fórmula oficial do Guia "
-        "(não é média de taxas por curso). fonte=derivada.",
+        "Série anual e YoY com a fórmula oficial do Guia. "
+        "ano_inicio/ano_fim opcionais (usa o intervalo com dado). "
+        "Recortes extras só os do painel daquele indicador.",
     ),
     (
         pnp_ranking,
         "pnp_ranking",
-        "Ranking de instituições ou unidades com a fórmula oficial do Guia. fonte=derivada.",
+        "Ranking com a fórmula oficial. nivel=instituição/unidade/UF/região "
+        "ou recorte do painel daquele indicador (ex.: modalidade só em ENEVA/ENM).",
+    ),
+    (
+        pnp_agregar,
+        "pnp_agregar",
+        "Quebra um indicador pela fórmula oficial. group_by só hierarquia ou "
+        "recorte do painel daquele indicador. fonte=derivada.",
     ),
     (
         pnp_estatisticas,
